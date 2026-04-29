@@ -2292,6 +2292,7 @@ function cls(v) { return v >= 0 ? 'up' : 'down'; }
 function sign(v) { return v >= 0 ? '+' : ''; }
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function nowDatetimeStr() { return datetimeLocalToStr(nowDatetimeLocal()); }
+function displayDate(d) { return d ? d.split(' ')[0] : d; }
 function nowDatetimeLocal() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
@@ -2396,14 +2397,14 @@ function renderAdjustments() {
   const isAdmin = currentUser?.role === 'admin';
   document.querySelector('#adj-table tbody').innerHTML = appData.portfolio.adjustments.map((a, i) => {
     const modifiedTag = a.timeModified ? ' <span class="tag" style="background:#fff7e6;color:#d48806;font-size:10px">已修改</span>' : '';
-    return `<tr><td>${a.date}${modifiedTag}</td><td><span class="tag ${a.action === 'buy' ? 'tag-buy' : 'tag-sell'}">${a.action === 'buy' ? '买入' : '卖出'}</span></td><td>${a.code}</td><td>${a.name}</td><td>${a.qty}股</td><td>¥${a.price.toFixed(2)}</td><td>${a.reason}</td>${isAdmin ? `<td style="white-space:nowrap"><button class="del-btn" style="border-color:var(--gold);color:var(--gold)" onclick="editAdjTime(${i})">改时间</button> <button class="del-btn" onclick="delAdjustment(${i})">删除</button></td>` : ''}</tr>`;
+    return `<tr><td>${displayDate(a.date)}${modifiedTag}</td><td><span class="tag ${a.action === 'buy' ? 'tag-buy' : 'tag-sell'}">${a.action === 'buy' ? '买入' : '卖出'}</span></td><td>${a.code}</td><td>${a.name}</td><td>${a.qty}股</td><td>¥${a.price.toFixed(2)}</td><td>${a.reason}</td>${isAdmin ? `<td style="white-space:nowrap"><button class="del-btn" style="border-color:var(--gold);color:var(--gold)" onclick="editAdjTime(${i})">改时间</button> <button class="del-btn" onclick="delAdjustment(${i})">删除</button></td>` : ''}</tr>`;
   }).join('');
 
   document.getElementById('adj-timeline').innerHTML = appData.portfolio.adjustments.map(a => {
     const modifiedTag = a.timeModified ? ' <span class="tag" style="background:#fff7e6;color:#d48806;font-size:10px">已修改</span>' : '';
     return `
     <div class="timeline-item ${a.action === 'sell' ? 'sell' : ''}">
-      <div class="time">${a.date}${modifiedTag}</div>
+      <div class="time">${displayDate(a.date)}${modifiedTag}</div>
       <div class="title"><span class="tag ${a.action === 'buy' ? 'tag-buy' : 'tag-sell'}">${a.action === 'buy' ? '买入' : '卖出'}</span> ${a.name} <span style="color:#8c8c8c">(${a.code})</span></div>
       <div class="desc">${a.qty}股 × ¥${a.price.toFixed(2)}　|　${a.reason}</div>
     </div>`;
