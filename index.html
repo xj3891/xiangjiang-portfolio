@@ -402,6 +402,7 @@ tr:hover td { background: #fafafa; }
     <div class="header-right">
       <span class="role-tag" id="header-role"></span>
       <span class="user-info" id="header-user"></span>
+      <span id="header-sync" style="font-size:11px;opacity:0.6" title="云端同步状态"></span>
       <button class="logout-btn" onclick="handleLogout()">退出</button>
     </div>
   </div>
@@ -545,6 +546,26 @@ tr:hover td { background: #fafafa; }
       <button class="admin-btn" onclick="addNavData()">添加净值</button>
     </div>
 
+    <!-- 云端同步设置 -->
+    <div class="card">
+      <div class="card-title"><span class="admin-dot"></span>☁️ 云端同步</div>
+      <p id="sync-status" style="font-size:13px;color:#8c8c8c;margin-bottom:12px">📴 未配置</p>
+      <div id="cloud-token-section">
+        <div class="form-group">
+          <label>GitHub Token（用于云端读写）</label>
+          <input type="password" id="cloud-token-input" placeholder="ghp_xxxxxxxx" autocomplete="off">
+          <p style="font-size:11px;color:#8c8c8c;margin-top:4px">从 github.com/settings/tokens 获取，需勾选 repo 权限</p>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+          <button class="admin-btn primary" onclick="saveCloudToken()">保存Token</button>
+          <button class="admin-btn" onclick="syncPullFromCloud()">⬇️ 从云端拉取</button>
+          <button class="admin-btn" onclick="syncPushToCloud()">⬆️ 推送到云端</button>
+          <button class="admin-btn danger" onclick="clearCloudToken()">断开云端</button>
+        </div>
+      </div>
+      <p style="font-size:12px;color:#8c8c8c">💡 配置Token后，调仓/持仓等操作会自动同步到云端，手机和电脑数据实时一致</p>
+    </div>
+
     <!-- 数据备份与恢复 -->
     <div class="card">
       <div class="card-title"><span class="admin-dot"></span>数据备份与恢复</div>
@@ -575,10 +596,14 @@ tr:hover td { background: #fafafa; }
 
 <script>
 // =====================================================
-//  用户系统 & 数据持久化
+//  用户系统 & 数据持久化 + 云端同步
 // =====================================================
 const STORAGE_KEY = 'xj_portfolio';
 const SESSION_KEY = 'xj_session';
+const CLOUD_TOKEN_KEY = 'xj_cloud_token';
+const CLOUD_DATA_URL = 'https://xj3891.github.io/xiangjiang-portfolio/data.json';
+const CLOUD_API_URL = 'https://api.github.com/repos/xj3891/xiangjiang-portfolio/contents/data.json';
+const CLOUD_SHA_KEY = 'xj_cloud_sha';
 
 // 默认主理人账号
 const DEFAULT_ADMIN = { username: 'HTXJ01', password: 'HTZQ2026', role: 'admin', remark: '主理人', created: '2024-01-01' };
@@ -621,26 +646,189 @@ const DEFAULT_PORTFOLIO = {
   ]
 };
 
-// 加载/保存数据
-function loadData() {
+// ====== 云端同步模块 ======
+let cloudSyncing = false;
+let cloudLastSync = null;
+let cloudToken = localStorage.getItem(CLOUD_TOKEN_KEY) || '';
+
+function setCloudToken(token) {
+  cloudToken = token;
+  if (token) {
+    localStorage.setItem(CLOUD_TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(CLOUD_TOKEN_KEY);
+  }
+}
+
+function isCloudEnabled() { return !!cloudToken; }
+
+// 从云端拉取数据（所有人可读）
+async function fetchCloudData() {
+  try {
+    const resp = await fetch(CLOUD_DATA_URL + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    if (data && data.users && data.portfolio) {
+      cloudLastSync = new Date().toLocaleString();
+      return data;
+    }
+    return null;
+  } catch (e) {
+    console.warn('云端数据拉取失败:', e.message);
+    return null;
+  }
+}
+
+// 推送数据到云端（仅主理人）
+async function pushCloudData(data) {
+  if (!cloudToken) return false;
+  if (cloudSyncing) return false;
+  cloudSyncing = true;
+  try {
+    // 先获取当前文件SHA
+    const headResp = await fetch(CLOUD_API_URL, {
+      headers: { 'Authorization': 'token ' + cloudToken, 'Accept': 'application/vnd.github.v3+json' }
+    });
+    let sha = null;
+    if (headResp.ok) {
+      const headData = await headResp.json();
+      sha = headData.sha;
+    }
+
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+    const body = {
+      message: '数据更新 ' + new Date().toLocaleString(),
+      content: content
+    };
+    if (sha) body.sha = sha;
+
+    const resp = await fetch(CLOUD_API_URL, {
+      method: 'PUT',
+      headers: { 'Authorization': 'token ' + cloudToken, 'Accept': 'application/vnd.github.v3+json' },
+      body: JSON.stringify(body)
+    });
+
+    if (resp.ok) {
+      const result = await resp.json();
+      localStorage.setItem(CLOUD_SHA_KEY, result.content.sha);
+      cloudLastSync = new Date().toLocaleString();
+      updateSyncStatus();
+      cloudSyncing = false;
+      return true;
+    } else {
+      const err = await resp.json();
+      console.warn('云端推送失败:', err.message);
+      cloudSyncing = false;
+      return false;
+    }
+  } catch (e) {
+    console.warn('云端推送异常:', e.message);
+    cloudSyncing = false;
+    return false;
+  }
+}
+
+// 更新同步状态UI
+function updateSyncStatus() {
+  const el = document.getElementById('sync-status');
+  const headerSync = document.getElementById('header-sync');
+  if (isCloudEnabled()) {
+    const time = cloudLastSync || '尚未同步';
+    if (el) { el.innerHTML = '☁️ 已连接 · 上次同步: ' + time; el.style.color = '#389e0d'; }
+    if (headerSync) { headerSync.textContent = '☁️'; headerSync.title = '云端已连接 · ' + time; }
+  } else {
+    if (el) { el.innerHTML = '📴 未配置云端同步（数据仅保存在本机）'; el.style.color = '#8c8c8c'; }
+    if (headerSync) { headerSync.textContent = ''; }
+  }
+}
+
+// 加载数据（优先云端）
+async function loadDataAsync() {
+  // 先从localStorage读取本地数据
+  const localData = loadLocalData();
+
+  // 尝试从云端拉取最新数据
+  const cloudData = await fetchCloudData();
+
+  if (cloudData) {
+    // 云端有数据，使用云端数据
+    // 合并：以云端为主，但确保本地新增的客户账号不丢失
+    const localClients = localData.users.filter(u => u.role !== 'admin');
+    const cloudClientNames = cloudData.users.map(u => u.username);
+    localClients.forEach(lc => {
+      if (!cloudClientNames.includes(lc.username)) {
+        cloudData.users.push(lc);
+      }
+    });
+    // 确保主理人存在
+    if (!cloudData.users.find(u => u.role === 'admin')) {
+      cloudData.users.unshift(DEFAULT_ADMIN);
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudData));
+    return cloudData;
+  }
+
+  // 云端无数据，使用本地
+  return localData;
+}
+
+function loadLocalData() {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) {
-    // 首次初始化
     const init = { users: [DEFAULT_ADMIN], portfolio: DEFAULT_PORTFOLIO };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(init));
     return init;
   }
   const data = JSON.parse(raw);
-  // 确保主理人账号始终存在
   if (!data.users.find(u => u.role === 'admin')) {
     data.users.unshift(DEFAULT_ADMIN);
-    saveData(data);
+    saveDataLocal(data);
   }
   return data;
 }
-function saveData(data) { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
 
-let appData = loadData();
+// 保存数据（本地 + 云端）
+function saveData(data) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  // 如果云端已启用且当前是主理人，自动推送
+  if (isCloudEnabled() && currentUser && currentUser.role === 'admin') {
+    pushCloudData(data).then(ok => {
+      if (!ok) console.warn('云端同步失败，数据已保存到本地');
+    });
+  }
+}
+
+function saveDataLocal(data) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+// 手动同步：拉取云端 → 覆盖本地
+async function syncPullFromCloud() {
+  toast('正在从云端拉取数据...');
+  const cloudData = await fetchCloudData();
+  if (cloudData) {
+    appData = cloudData;
+    if (!appData.users.find(u => u.role === 'admin')) appData.users.unshift(DEFAULT_ADMIN);
+    saveDataLocal(appData);
+    renderAll();
+    fetchMarket();
+    toast('✅ 云端数据已同步到本地');
+  } else {
+    toast('❌ 云端数据拉取失败');
+  }
+}
+
+// 手动同步：推送本地 → 云端
+async function syncPushToCloud() {
+  if (!isCloudEnabled()) { toast('请先配置云端同步Token'); return; }
+  toast('正在推送数据到云端...');
+  const ok = await pushCloudData(appData);
+  if (ok) toast('✅ 数据已同步到云端');
+  else toast('❌ 云端推送失败，请检查Token是否有效');
+}
+
+let appData = loadLocalData();
+let currentUser = null;
 
 // =====================================================
 //  A股股票搜索引擎（代码/名称/拼音缩写）
@@ -1850,6 +2038,13 @@ function enterApp() {
   document.getElementById('adj-admin-bar').style.display = isAdmin ? '' : 'none';
   document.getElementById('adj-del-th').style.display = isAdmin ? '' : 'none';
 
+  // 从云端拉取最新数据
+  loadDataAsync().then(data => {
+    appData = data;
+    renderAll();
+    updateSyncStatus();
+  });
+
   fetchMarket().then(() => startAutoRefresh());
 }
 
@@ -2208,6 +2403,11 @@ function renderAdmin() {
   // 初始化快速调仓时间默认值
   const qaDt = document.getElementById('qa-datetime');
   if (qaDt && !qaDt.value) qaDt.value = nowDatetimeLocal();
+
+  // 云端同步状态
+  updateSyncStatus();
+  const tokenInput = document.getElementById('cloud-token-input');
+  if (tokenInput && cloudToken) tokenInput.value = cloudToken;
 
   // 客户列表
   const clients = appData.users.filter(u => u.role !== 'admin');
@@ -2648,6 +2848,33 @@ function addNavData() {
   saveData(appData); renderAll();
   ['nv-date','nv-nav','nv-ret','nv-bench'].forEach(id => document.getElementById(id).value = '');
   toast(`净值数据已${existing ? '更新' : '添加'}：${date}`);
+}
+
+// =====================================================
+//  云端同步操作
+// =====================================================
+function saveCloudToken() {
+  const token = document.getElementById('cloud-token-input').value.trim();
+  if (!token) { toast('请输入GitHub Token'); return; }
+  // 验证token
+  fetch('https://api.github.com/user', { headers: { 'Authorization': 'token ' + token } })
+    .then(r => { if (!r.ok) throw new Error('Token无效'); return r.json(); })
+    .then(user => {
+      setCloudToken(token);
+      updateSyncStatus();
+      toast('✅ 云端同步已启用，关联账号: ' + user.login);
+      // 首次启用，立即推送本地数据到云端
+      pushCloudData(appData);
+    })
+    .catch(e => toast('❌ Token验证失败: ' + e.message));
+}
+
+function clearCloudToken() {
+  if (!confirm('确认断开云端同步？断开后数据仅保存在本地')) return;
+  setCloudToken('');
+  document.getElementById('cloud-token-input').value = '';
+  updateSyncStatus();
+  toast('已断开云端同步');
 }
 
 // =====================================================
