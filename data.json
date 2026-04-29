@@ -6,6 +6,13 @@
       "role": "admin",
       "remark": "主理人",
       "created": "2024-01-01"
+    },
+    {
+      "username": "COBVIP01",
+      "password": "123456",
+      "role": "client",
+      "remark": "",
+      "created": "2026-04-29"
     }
   ],
   "portfolio": {
