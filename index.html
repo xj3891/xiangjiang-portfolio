@@ -2291,6 +2291,7 @@ function fmtMoney(v) {
 function cls(v) { return v >= 0 ? 'up' : 'down'; }
 function sign(v) { return v >= 0 ? '+' : ''; }
 function todayStr() { return new Date().toISOString().slice(0, 10); }
+function nowDatetimeStr() { return datetimeLocalToStr(nowDatetimeLocal()); }
 function nowDatetimeLocal() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
@@ -2675,7 +2676,7 @@ function addAdjustment() {
   const dateVal = document.getElementById('ma-datetime').value;
   if (!code || !name || !qty || !price) { toast('请填写完整信息'); return; }
 
-  const adjDate = dateVal ? datetimeLocalToStr(dateVal) : todayStr();
+  const adjDate = dateVal ? datetimeLocalToStr(dateVal) : nowDatetimeStr();
   appData.portfolio.adjustments.unshift({ date: adjDate, action, code, name, qty, price, reason });
   // 立即同步更新持仓
   syncHoldingAfterAdj(action, code, name, qty, price);
@@ -2778,7 +2779,7 @@ function submitQuickAdj() {
   const dateVal = document.getElementById('qa-datetime').value;
   if (!code || !name || !qty || !price) { toast('请先搜索选择股票，并填写完整信息'); return; }
 
-  const adjDate = dateVal ? datetimeLocalToStr(dateVal) : todayStr();
+  const adjDate = dateVal ? datetimeLocalToStr(dateVal) : nowDatetimeStr();
   // 1. 添加调仓记录
   appData.portfolio.adjustments.unshift({ date: adjDate, action, code, name, qty, price, reason });
 
