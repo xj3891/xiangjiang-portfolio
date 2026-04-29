@@ -1971,7 +1971,6 @@ function searchStocks(keyword, limit = 8) {
   results.sort((a, b) => b.score - a.score);
   return results.slice(0, limit);
 }
-let currentUser = null;
 let marketData = {};
 
 // 检查会话
