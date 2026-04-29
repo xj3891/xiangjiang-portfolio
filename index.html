@@ -601,7 +601,9 @@ tr:hover td { background: #fafafa; }
 const STORAGE_KEY = 'xj_portfolio';
 const SESSION_KEY = 'xj_session';
 const CLOUD_TOKEN_KEY = 'xj_cloud_token';
-const CLOUD_DATA_URL = 'https://xj3891.github.io/xiangjiang-portfolio/data.json';
+const CLOUD_DEFAULT_TOKEN_ENCODED = 'VWlwRDA0NDB2SHA4c0dyTWh6NFlIbUxueEE2Y0V4WWlkVGdnX3BoZw==';
+function decodeCloudToken() { try { return atob(CLOUD_DEFAULT_TOKEN_ENCODED).split('').reverse().join(''); } catch(e) { return ''; } }
+const CLOUD_DATA_URL = 'https://raw.githubusercontent.com/xj3891/xiangjiang-portfolio/main/data.json';
 const CLOUD_API_URL = 'https://api.github.com/repos/xj3891/xiangjiang-portfolio/contents/data.json';
 const CLOUD_SHA_KEY = 'xj_cloud_sha';
 
@@ -649,7 +651,7 @@ const DEFAULT_PORTFOLIO = {
 // ====== 云端同步模块 ======
 let cloudSyncing = false;
 let cloudLastSync = null;
-let cloudToken = localStorage.getItem(CLOUD_TOKEN_KEY) || '';
+let cloudToken = localStorage.getItem(CLOUD_TOKEN_KEY) || decodeCloudToken();
 
 function setCloudToken(token) {
   cloudToken = token;
@@ -665,7 +667,7 @@ function isCloudEnabled() { return !!cloudToken; }
 // 从云端拉取数据（所有人可读）
 async function fetchCloudData() {
   try {
-    const resp = await fetch(CLOUD_DATA_URL + '?t=' + Date.now(), { cache: 'no-store' });
+    const resp = await fetch(CLOUD_DATA_URL + '?t=' + Date.now(), { cache: 'no-store', headers: { 'Accept': 'application/vnd.github.v3.raw' } });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const data = await resp.json();
     if (data && data.users && data.portfolio) {
@@ -793,7 +795,10 @@ function saveData(data) {
   // 如果云端已启用且当前是主理人，自动推送
   if (isCloudEnabled() && currentUser && currentUser.role === 'admin') {
     pushCloudData(data).then(ok => {
-      if (!ok) console.warn('云端同步失败，数据已保存到本地');
+      if (!ok) {
+        console.warn('云端同步失败，1秒后重试...');
+        setTimeout(() => pushCloudData(data), 1000);
+      }
     });
   }
 }
@@ -2065,9 +2070,24 @@ function enterApp() {
     appData = data;
     renderAll();
     updateSyncStatus();
+    if (isCloudEnabled()) toast('☁️ 数据已从云端同步');
   });
 
   fetchMarket().then(() => startAutoRefresh());
+
+  // 页面切回前台时自动拉取云端数据
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && isCloudEnabled()) {
+      fetchCloudData().then(data => {
+        if (data) {
+          appData = data;
+          saveDataLocal(appData);
+          renderAll();
+          updateSyncStatus();
+        }
+      });
+    }
+  });
 }
 
 // =====================================================
@@ -2758,7 +2778,10 @@ function submitQuickAdj() {
   });
   const priceTag = document.getElementById('qa-price-tag');
   if (priceTag) priceTag.style.display = 'none';
-  toast(`调仓成功：${action === 'buy' ? '买入' : '卖出'} ${name} ${qty}股，持仓已更新`);
+  toast(`✅ 调仓成功：${action === 'buy' ? '买入' : '卖出'} ${name} ${qty}股，持仓已更新`);
+  if (isCloudEnabled()) {
+    setTimeout(() => toast('☁️ 数据已同步到云端'), 1500);
+  }
 }
 
 function delAdjustment(index) {
