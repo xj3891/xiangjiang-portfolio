@@ -664,9 +664,24 @@ function setCloudToken(token) {
 
 function isCloudEnabled() { return !!cloudToken; }
 
-// 从云端拉取数据（所有人可读）
+// 从云端拉取数据（所有人可读，优先API绕过CDN缓存）
 async function fetchCloudData() {
   try {
+    // 方式1：用API读取（带auth可绕过CDN缓存，且数据最新）
+    if (cloudToken) {
+      const apiResp = await fetch(CLOUD_API_URL, {
+        headers: { 'Authorization': 'token ' + cloudToken, 'Accept': 'application/vnd.github.v3+json' }
+      });
+      if (apiResp.ok) {
+        const apiData = await apiResp.json();
+        const decoded = JSON.parse(decodeURIComponent(escape(atob(apiData.content))));
+        if (decoded && decoded.users && decoded.portfolio) {
+          cloudLastSync = new Date().toLocaleString();
+          return decoded;
+        }
+      }
+    }
+    // 方式2：fallback用raw URL（可能有缓存延迟）
     const resp = await fetch(CLOUD_DATA_URL + '?t=' + Date.now(), { cache: 'no-store', headers: { 'Accept': 'application/vnd.github.v3.raw' } });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const data = await resp.json();
