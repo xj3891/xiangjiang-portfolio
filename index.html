@@ -187,6 +187,57 @@ tr:hover td { background: #fafafa; }
   font-size: 10px; color: var(--green); background: var(--green-light); padding: 1px 6px; border-radius: 3px;
 }
 
+/* ====== 短线战绩报告 ====== */
+.battle-report {
+  background: linear-gradient(135deg, #1a1a2e 0%, #2d1b3d 40%, #0f3460 100%);
+  border-radius: var(--radius); padding: 18px 16px; margin-bottom: 16px;
+  color: white; position: relative; overflow: hidden;
+}
+.battle-report::before {
+  content: ''; position: absolute; top: -30px; right: -30px;
+  width: 100px; height: 100px; border-radius: 50%;
+  background: rgba(255,215,0,0.08);
+}
+.battle-report::after {
+  content: ''; position: absolute; bottom: -20px; left: 30%;
+  width: 60px; height: 60px; border-radius: 50%;
+  background: rgba(22,119,255,0.06);
+}
+.br-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 14px; position: relative; z-index: 1;
+}
+.br-header h2 { font-size: 16px; font-weight: 700; letter-spacing: 1px; }
+.br-header h2 span { color: #ffd666; }
+.br-header .br-date { font-size: 11px; opacity: 0.5; }
+.br-list { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; position: relative; z-index: 1; -webkit-overflow-scrolling: touch; }
+.br-item {
+  flex: none; min-width: 120px; background: rgba(255,255,255,0.08);
+  border-radius: 10px; padding: 12px 14px; border: 1px solid rgba(255,255,255,0.06);
+  transition: transform 0.2s, background 0.2s;
+}
+.br-item:hover { transform: translateY(-2px); background: rgba(255,255,255,0.12); }
+.br-item .br-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.br-item .br-code { font-size: 11px; opacity: 0.5; }
+.br-item .br-pct { font-size: 22px; font-weight: 800; margin-top: 6px; letter-spacing: -0.5px; }
+.br-item .br-pct.up { color: #ff6b6b; }
+.br-item .br-pct.down { color: #51cf66; }
+.br-item .br-cost { font-size: 11px; opacity: 0.4; margin-top: 2px; }
+.br-empty { text-align: center; padding: 16px; opacity: 0.4; font-size: 13px; position: relative; z-index: 1; }
+.br-badge {
+  display: inline-block; background: linear-gradient(135deg, #ffd666, #fa8c16);
+  color: #1a1a2e; font-size: 10px; font-weight: 700; padding: 2px 8px;
+  border-radius: 10px; margin-left: 8px; vertical-align: middle;
+}
+
+@media screen and (max-width: 768px) {
+  .battle-report { padding: 14px 12px; }
+  .br-header h2 { font-size: 14px; }
+  .br-item { min-width: 105px; padding: 10px 12px; }
+  .br-item .br-name { font-size: 14px; }
+  .br-item .br-pct { font-size: 19px; }
+}
+
 /* ====== 移动端全面适配 ====== */
 
 /* 持仓卡片 - 桌面端隐藏 */
@@ -417,6 +468,8 @@ tr:hover td { background: #fafafa; }
 
   <!-- 概览页 -->
   <div id="page-overview" class="page active">
+    <!-- 短线战绩报告 -->
+    <div class="battle-report" id="battle-report"></div>
     <div class="stats" id="overview-stats"></div>
     <div class="card">
       <div class="card-title"><span class="dot"></span>持仓分布</div>
@@ -2324,6 +2377,46 @@ function renderOverview() {
   const totalPnl = totalMv - totalCost;
   const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost * 100) : 0;
   const latestNav = appData.portfolio.nav[appData.portfolio.nav.length - 1] || { nav: 1 };
+
+  // ====== 短线战绩报告 ======
+  const winners = appData.portfolio.holdings
+    .map(h => {
+      const c = getHoldingCalc(h);
+      return { ...h, pnlPct: c.pnlPct, price: c.price, cost: h.cost };
+    })
+    .filter(h => h.pnlPct >= 5)
+    .sort((a, b) => b.pnlPct - a.pnlPct);
+
+  const reportEl = document.getElementById('battle-report');
+  if (reportEl) {
+    const today = new Date();
+    const monthAgo = new Date(today.getTime() - 30 * 24 * 3600 * 1000);
+    const dateRange = `${monthAgo.getMonth()+1}/${monthAgo.getDate()} - ${today.getMonth()+1}/${today.getDate()}`;
+    if (winners.length > 0) {
+      reportEl.innerHTML = `
+        <div class="br-header">
+          <h2>🔥 短线战绩<span class="br-badge">${winners.length}只盈利>5%</span></h2>
+          <span class="br-date">${dateRange}</span>
+        </div>
+        <div class="br-list">
+          ${winners.map(h => `
+            <div class="br-item">
+              <div class="br-name">${h.name}</div>
+              <div class="br-code">${h.code}</div>
+              <div class="br-pct up">+${h.pnlPct.toFixed(1)}%</div>
+              <div class="br-cost">成本 ¥${h.cost.toFixed(2)} → 现价 ¥${h.price.toFixed(2)}</div>
+            </div>
+          `).join('')}
+        </div>`;
+    } else {
+      reportEl.innerHTML = `
+        <div class="br-header">
+          <h2>📊 短线战绩</h2>
+          <span class="br-date">${dateRange}</span>
+        </div>
+        <div class="br-empty">暂无盈利超过5%的持仓，持续跟踪中...</div>`;
+    }
+  }
 
   document.getElementById('overview-stats').innerHTML = `
     <div class="stat-box blue"><div class="label">总市值</div><div class="value">¥${fmtMoney(totalMv)}</div></div>
