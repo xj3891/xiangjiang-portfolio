@@ -2419,9 +2419,9 @@ function renderOverview() {
   }
 
   document.getElementById('overview-stats').innerHTML = `
+    <div class="stat-box red" style="grid-column:1/-1"><div class="label">组合收益率</div><div class="value" style="font-size:32px">${sign(totalPnlPct)}${fmt(Math.abs(totalPnlPct))}%</div></div>
     <div class="stat-box blue"><div class="label">总市值</div><div class="value">¥${fmtMoney(totalMv)}</div></div>
-    <div class="stat-box ${totalPnl >= 0 ? 'red' : 'green'}"><div class="label">累计盈亏</div><div class="value">${sign(totalPnl)}¥${fmtMoney(Math.abs(totalPnl))}</div></div>
-    <div class="stat-box ${totalPnlPct >= 0 ? 'red' : 'green'}"><div class="label">收益率</div><div class="value">${sign(totalPnlPct)}${fmt(Math.abs(totalPnlPct))}%</div></div>
+    <div class="stat-box red"><div class="label">累计盈亏</div><div class="value">${sign(totalPnl)}¥${fmtMoney(Math.abs(totalPnl))}</div></div>
     <div class="stat-box gray"><div class="label">最新净值</div><div class="value">${latestNav.nav.toFixed(4)}</div></div>`;
 
   document.querySelector('#overview-table tbody').innerHTML = appData.portfolio.holdings.map(h => {
