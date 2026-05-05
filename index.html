@@ -2342,7 +2342,7 @@ function fmtMoney(v) {
   return v.toFixed(2);
 }
 function cls(v) { return v >= 0 ? 'up' : 'down'; }
-function sign(v) { return v >= 0 ? '+' : ''; }
+function sign(v) { return v >= 0 ? '+' : '-'; }
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function nowDatetimeStr() { return datetimeLocalToStr(nowDatetimeLocal()); }
 function displayDate(d) { return d ? d.split(' ')[0] : d; }
@@ -2421,12 +2421,12 @@ function renderOverview() {
   document.getElementById('overview-stats').innerHTML = `
     <div class="stat-box blue"><div class="label">总市值</div><div class="value">¥${fmtMoney(totalMv)}</div></div>
     <div class="stat-box ${totalPnl >= 0 ? 'red' : 'green'}"><div class="label">累计盈亏</div><div class="value">${sign(totalPnl)}¥${fmtMoney(Math.abs(totalPnl))}</div></div>
-    <div class="stat-box ${totalPnlPct >= 0 ? 'red' : 'green'}"><div class="label">收益率</div><div class="value">${sign(totalPnlPct)}${fmt(totalPnlPct)}%</div></div>
+    <div class="stat-box ${totalPnlPct >= 0 ? 'red' : 'green'}"><div class="label">收益率</div><div class="value">${sign(totalPnlPct)}${fmt(Math.abs(totalPnlPct))}%</div></div>
     <div class="stat-box gray"><div class="label">最新净值</div><div class="value">${latestNav.nav.toFixed(4)}</div></div>`;
 
   document.querySelector('#overview-table tbody').innerHTML = appData.portfolio.holdings.map(h => {
     const c = getHoldingCalc(h);
-    return `<tr><td><b>${h.name}</b> <span style="color:#8c8c8c;font-size:12px">${h.code}</span></td><td>${h.weight}%</td><td>¥${fmt(c.price)}</td><td class="${cls(c.changePct)}">${sign(c.changePct)}${fmt(c.changePct)}%</td><td class="${cls(c.pnlPct)}">${sign(c.pnlPct)}${fmt(c.pnlPct)}%</td></tr>`;
+    return `<tr><td><b>${h.name}</b> <span style="color:#8c8c8c;font-size:12px">${h.code}</span></td><td>${h.weight}%</td><td>¥${fmt(c.price)}</td><td class="${cls(c.changePct)}">${sign(c.changePct)}${fmt(Math.abs(c.changePct))}%</td><td class="${cls(c.pnlPct)}">${sign(c.pnlPct)}${fmt(Math.abs(c.pnlPct))}%</td></tr>`;
   }).join('');
 
   // 移动端卡片视图
@@ -2434,7 +2434,7 @@ function renderOverview() {
     const c = getHoldingCalc(h);
     return `<div class="holding-card">
       <div class="hc-left"><div><span class="hc-name">${h.name}</span><span class="hc-code">${h.code}</span></div><div class="hc-meta">持仓 ${h.weight}% · 成本 ¥${fmt(h.cost)}</div></div>
-      <div class="hc-right"><div class="hc-price">¥${fmt(c.price)}</div><div class="hc-pct ${cls(c.changePct)}">${sign(c.changePct)}${fmt(c.changePct)}%</div><div class="hc-pct ${cls(c.pnlPct)}">盈亏 ${sign(c.pnlPct)}${fmt(c.pnlPct)}%</div></div>
+      <div class="hc-right"><div class="hc-price">¥${fmt(c.price)}</div><div class="hc-pct ${cls(c.changePct)}">${sign(c.changePct)}${fmt(Math.abs(c.changePct))}%</div><div class="hc-pct ${cls(c.pnlPct)}">盈亏 ${sign(c.pnlPct)}${fmt(Math.abs(c.pnlPct))}%</div></div>
     </div>`;
   }).join('');
 
@@ -2463,11 +2463,11 @@ function renderHoldings() {
   let totalMv = 0, totalCost = 0;
   document.querySelector('#holdings-table tbody').innerHTML = appData.portfolio.holdings.map(h => {
     const c = getHoldingCalc(h); totalMv += c.mv; totalCost += c.cost;
-    return `<tr><td>${h.code}</td><td><b>${h.name}</b></td><td>${h.weight}%</td><td>¥${fmt(h.cost)}</td><td><b class="${cls(c.changePct)}">¥${fmt(c.price)}</b></td><td class="${cls(c.changePct)}">${sign(c.changePct)}${fmt(c.changePct)}%</td><td>¥${fmtMoney(c.mv)}</td><td class="${cls(c.pnl)}">${sign(c.pnl)}¥${fmtMoney(Math.abs(c.pnl))}</td><td class="${cls(c.pnlPct)}">${sign(c.pnlPct)}${fmt(c.pnlPct)}%</td></tr>`;
+    return `<tr><td>${h.code}</td><td><b>${h.name}</b></td><td>${h.weight}%</td><td>¥${fmt(h.cost)}</td><td><b class="${cls(c.changePct)}">¥${fmt(c.price)}</b></td><td class="${cls(c.changePct)}">${sign(c.changePct)}${fmt(Math.abs(c.changePct))}%</td><td>¥${fmtMoney(c.mv)}</td><td class="${cls(c.pnl)}">${sign(c.pnl)}¥${fmtMoney(Math.abs(c.pnl))}</td><td class="${cls(c.pnlPct)}">${sign(c.pnlPct)}${fmt(Math.abs(c.pnlPct))}%</td></tr>`;
   }).join('');
   const totalPnl = totalMv - totalCost;
   if (totalCost > 0) {
-    document.querySelector('#holdings-table tbody').innerHTML += `<tr style="font-weight:700;background:#fafafa"><td colspan="6">合计</td><td>¥${fmtMoney(totalMv)}</td><td class="${cls(totalPnl)}">${sign(totalPnl)}¥${fmtMoney(Math.abs(totalPnl))}</td><td class="${cls(totalPnl/totalCost*100)}">${sign(totalPnl/totalCost*100)}${(totalPnl/totalCost*100).toFixed(2)}%</td></tr>`;
+    document.querySelector('#holdings-table tbody').innerHTML += `<tr style="font-weight:700;background:#fafafa"><td colspan="6">合计</td><td>¥${fmtMoney(totalMv)}</td><td class="${cls(totalPnl)}">${sign(totalPnl)}¥${fmtMoney(Math.abs(totalPnl))}</td><td class="${cls(totalPnl/totalCost*100)}">${sign(totalPnl/totalCost*100)}${Math.abs(totalPnl/totalCost*100).toFixed(2)}%</td></tr>`;
   }
 
   const industryMap = {};
@@ -2509,9 +2509,9 @@ function renderPerformance() {
   const latest = nav[nav.length - 1] || { nav: 1, ret: 0, bench: 0 };
 
   document.getElementById('perf-stats').innerHTML = `
-    <div class="stat-box red"><div class="label">累计收益率</div><div class="value">${sign(latest.ret)}${latest.ret}%</div></div>
+    <div class="stat-box red"><div class="label">累计收益率</div><div class="value">${sign(latest.ret)}${Math.abs(latest.ret)}%</div></div>
     <div class="stat-box blue"><div class="label">最新净值</div><div class="value">${latest.nav.toFixed(4)}</div></div>
-    <div class="stat-box green"><div class="label">超额收益</div><div class="value">${sign(latest.ret - latest.bench)}${(latest.ret - latest.bench).toFixed(2)}%</div></div>
+    <div class="stat-box green"><div class="label">超额收益</div><div class="value">${sign(latest.ret - latest.bench)}${Math.abs(latest.ret - latest.bench).toFixed(2)}%</div></div>
     <div class="stat-box gray"><div class="label">调仓次数</div><div class="value">${appData.portfolio.adjustments.length}次</div></div>`;
 
   if (nav.length > 1) {
@@ -2544,7 +2544,7 @@ function renderPerformance() {
 
   document.querySelector('#nav-table tbody').innerHTML = nav.map(n => {
     const excess = n.ret - n.bench;
-    return `<tr><td>${n.date}</td><td>${n.nav.toFixed(4)}</td><td class="${cls(n.ret)}">${sign(n.ret)}${n.ret}%</td><td class="${cls(n.bench)}">${sign(n.bench)}${n.bench}%</td><td class="${cls(excess)}">${sign(excess)}${excess.toFixed(2)}%</td></tr>`;
+    return `<tr><td>${n.date}</td><td>${n.nav.toFixed(4)}</td><td class="${cls(n.ret)}">${sign(n.ret)}${Math.abs(n.ret)}%</td><td class="${cls(n.bench)}">${sign(n.bench)}${Math.abs(n.bench)}%</td><td class="${cls(excess)}">${sign(excess)}${Math.abs(excess).toFixed(2)}%</td></tr>`;
   }).join('');
 }
 
