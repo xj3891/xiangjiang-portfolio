@@ -6,6 +6,13 @@
       "role": "admin",
       "remark": "主理人",
       "created": "2024-01-01"
+    },
+    {
+      "username": "vip01",
+      "password": "123456",
+      "role": "client",
+      "remark": "",
+      "created": "2026-05-05"
     }
   ],
   "portfolio": {
@@ -304,9 +311,9 @@
     "nav": [
       {
         "date": "2026-03-14",
-        "nav": 1.0,
-        "ret": 0.0,
-        "bench": 0.0
+        "nav": 1,
+        "ret": 0,
+        "bench": 0
       },
       {
         "date": "2026-03-21",
