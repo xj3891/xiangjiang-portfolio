@@ -95,7 +95,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
 .card-title .dot { width: 4px; height: 16px; background: var(--primary); border-radius: 2px; }
 .card-title .admin-dot { width: 4px; height: 16px; background: var(--gold); border-radius: 2px; }
 .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-@media(min-width: 640px) { .stats { grid-template-columns: repeat(4, 1fr); } }
+@media(min-width: 640px) { .stats { grid-template-columns: repeat(3, 1fr); } }
 .stat-box { padding: 16px; border-radius: var(--radius); text-align: center; }
 .stat-box .label { font-size: 12px; color: var(--text2); margin-bottom: 6px; }
 .stat-box .value { font-size: 22px; font-weight: 700; }
@@ -2374,8 +2374,27 @@ function renderAll() {
 function renderOverview() {
   let totalMv = 0, totalCost = 0;
   appData.portfolio.holdings.forEach(h => { const c = getHoldingCalc(h); totalMv += c.mv; totalCost += c.cost; });
-  const totalPnl = totalMv - totalCost;
-  const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost * 100) : 0;
+
+  // ====== 资金平衡法计算真实总盈亏 ======
+  const INITIAL_CAPITAL = 1000000;
+  // 从调仓记录计算总买入支出和总卖出收入
+  let totalBuy = 0, totalSell = 0;
+  appData.portfolio.adjustments.forEach(a => {
+    if (a.action === 'buy') totalBuy += a.price * a.qty;
+    if (a.action === 'sell') totalSell += a.price * a.qty;
+  });
+  // 现金余额 = 起始资金 - 买入支出 + 卖出收入
+  const cashBalance = INITIAL_CAPITAL - totalBuy + totalSell;
+  // 总资产 = 现金 + 当前持仓市值
+  const totalAssets = cashBalance + totalMv;
+  // 总盈亏 = 总资产 - 起始资金
+  const totalPnl = totalAssets - INITIAL_CAPITAL;
+  const totalPnlPct = (totalPnl / INITIAL_CAPITAL) * 100;
+  // 已实现盈亏（已卖出交易的盈亏）
+  const realizedPnl = totalSell - totalBuy + totalCost; // 卖出收入 - 对应买入成本
+  // 未实现盈亏（当前持仓浮盈浮亏）
+  const unrealizedPnl = totalMv - totalCost;
+
   const latestNav = appData.portfolio.nav[appData.portfolio.nav.length - 1] || { nav: 1 };
 
   // ====== 短线战绩报告 ======
@@ -2420,8 +2439,11 @@ function renderOverview() {
 
   document.getElementById('overview-stats').innerHTML = `
     <div class="stat-box red" style="grid-column:1/-1"><div class="label">组合收益率</div><div class="value" style="font-size:32px">${sign(totalPnlPct)}${fmt(Math.abs(totalPnlPct))}%</div></div>
-    <div class="stat-box blue"><div class="label">总市值</div><div class="value">¥${fmtMoney(totalMv)}</div></div>
-    <div class="stat-box red"><div class="label">累计盈亏</div><div class="value">${sign(totalPnl)}¥${fmtMoney(Math.abs(totalPnl))}</div></div>
+    <div class="stat-box red"><div class="label">总盈亏</div><div class="value">${sign(totalPnl)}¥${fmtMoney(Math.abs(totalPnl))}</div></div>
+    <div class="stat-box blue"><div class="label">总资产</div><div class="value">¥${fmtMoney(totalAssets)}</div></div>
+    <div class="stat-box ${realizedPnl >= 0 ? 'red' : 'green'}"><div class="label">已实现盈亏</div><div class="value">${sign(realizedPnl)}¥${fmtMoney(Math.abs(realizedPnl))}</div></div>
+    <div class="stat-box ${unrealizedPnl >= 0 ? 'red' : 'green'}"><div class="label">持仓浮盈亏</div><div class="value">${sign(unrealizedPnl)}¥${fmtMoney(Math.abs(unrealizedPnl))}</div></div>
+    <div class="stat-box gray"><div class="label">现金余额</div><div class="value">¥${fmtMoney(cashBalance)}</div></div>
     <div class="stat-box gray"><div class="label">最新净值</div><div class="value">${latestNav.nav.toFixed(4)}</div></div>`;
 
   document.querySelector('#overview-table tbody').innerHTML = appData.portfolio.holdings.map(h => {
