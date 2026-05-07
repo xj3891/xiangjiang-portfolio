@@ -2487,7 +2487,6 @@ function getHoldingCalc(h) {
 function getClosedPositionPerformance() {
   const adjustments = appData.portfolio.adjustments;
   const now = new Date();
-  const monthAgo = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
   
   // 按股票代码分组，按日期排序
   const positions = {};
@@ -2499,7 +2498,7 @@ function getClosedPositionPerformance() {
   const closedTrades = [];
   
   Object.keys(positions).forEach(code => {
-    const trades = positions[code].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const trades = positions[code].sort((a, b) => a.date.localeCompare(b.date));
     let buyQueue = [];
     
     trades.forEach(t => {
@@ -2510,10 +2509,10 @@ function getClosedPositionPerformance() {
         while (sellQty > 0 && buyQueue.length > 0) {
           const buy = buyQueue[0];
           const matchedQty = Math.min(buy.qty, sellQty);
-          const sellDate = new Date(t.date);
-          
-          // 只统计最近一个月内的卖出
-          if (sellDate >= monthAgo) {
+          // 兼容Safari：用字符串比较日期，避免Date解析问题
+          const sellDateStr = t.date.substring(0, 10);
+          const monthAgoStr = new Date(now.getTime() - 30*24*3600*1000).toISOString().substring(0, 10);
+          if (sellDateStr >= monthAgoStr) {
             const pnlPct = (t.price - buy.price) / buy.price * 100;
             closedTrades.push({
               code: code,
@@ -2721,13 +2720,15 @@ function renderAdjustments() {
   // 按时间倒序排列
   const sorted = appData.portfolio.adjustments
     .map((a, i) => ({ ...a, _idx: i }))
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
+    .sort((a, b) => {
+      // 兼容Safari：直接比较日期字符串而非Date对象
+      return b.date.localeCompare(a.date);
+    });
 
-  // 按月分组
+  // 按月分组（直接从日期字符串截取年月，避免Date解析兼容问题）
   const months = {};
   sorted.forEach(a => {
-    const d = new Date(a.date);
-    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const key = a.date.substring(0, 7); // "2026-05"
     if (!months[key]) months[key] = [];
     months[key].push(a);
   });
@@ -2746,8 +2747,9 @@ function renderAdjustments() {
 
     const rows = items.map(a => {
       const modifiedTag = a.timeModified ? ' <span class="tag" style="background:#fff7e6;color:#d48806;font-size:10px">改</span>' : '';
-      const d = new Date(a.date);
-      const timeStr = `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+      // 直接从字符串截取月/日，避免Date解析
+      const datePart = a.date.split(' ')[0]; // "2026-05-06"
+      const timeStr = datePart.substring(5).replace('-', '/'); // "05/06"
       return `<div class="adj-row">
         <div class="adj-time">${timeStr}${modifiedTag}</div>
         <div class="adj-tag"><span class="tag ${a.action === 'buy' ? 'tag-buy' : 'tag-sell'}">${a.action === 'buy' ? '买' : '卖'}</span></div>
