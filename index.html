@@ -346,7 +346,6 @@ tr:hover td { background: #fafafa; }
   #holdings-table { min-width: 600px; }
 
   /* 调仓表格 */
-  #adj-table { min-width: 550px; }
 
   /* 净值表格 */
   #nav-table { min-width: 480px; }
@@ -2153,7 +2152,7 @@ function enterApp() {
   document.getElementById('header-user').textContent = currentUser.username;
   document.getElementById('nav-admin').style.display = isAdmin ? '' : 'none';
   document.getElementById('adj-admin-bar').style.display = isAdmin ? '' : 'none';
-  document.getElementById('adj-del-th').style.display = isAdmin ? '' : 'none';
+  // adj-del-th已移除（调仓改为按月分组），不再操作该元素
 
   // 从云端拉取最新数据
   loadDataAsync().then(data => {
