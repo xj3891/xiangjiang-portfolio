@@ -2696,12 +2696,17 @@ function renderHoldings() {
 
 function renderAdjustments() {
   const isAdmin = currentUser?.role === 'admin';
-  document.querySelector('#adj-table tbody').innerHTML = appData.portfolio.adjustments.map((a, i) => {
+  // 按时间倒序排列（最新在前）
+  const sorted = appData.portfolio.adjustments
+    .map((a, i) => ({ ...a, _idx: i }))
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  document.querySelector('#adj-table tbody').innerHTML = sorted.map(a => {
     const modifiedTag = a.timeModified ? ' <span class="tag" style="background:#fff7e6;color:#d48806;font-size:10px">已修改</span>' : '';
-    return `<tr><td>${displayDate(a.date)}${modifiedTag}</td><td><span class="tag ${a.action === 'buy' ? 'tag-buy' : 'tag-sell'}">${a.action === 'buy' ? '买入' : '卖出'}</span></td><td>${a.code}</td><td>${a.name}</td><td>${a.qty}股</td><td>¥${a.price.toFixed(2)}</td><td>${a.reason}</td>${isAdmin ? `<td style="white-space:nowrap"><button class="del-btn" style="border-color:var(--gold);color:var(--gold)" onclick="editAdjTime(${i})">改时间</button> <button class="del-btn" onclick="delAdjustment(${i})">删除</button></td>` : ''}</tr>`;
+    return `<tr><td>${displayDate(a.date)}${modifiedTag}</td><td><span class="tag ${a.action === 'buy' ? 'tag-buy' : 'tag-sell'}">${a.action === 'buy' ? '买入' : '卖出'}</span></td><td>${a.code}</td><td>${a.name}</td><td>${a.qty}股</td><td>¥${a.price.toFixed(2)}</td><td>${a.reason}</td>${isAdmin ? `<td style="white-space:nowrap"><button class="del-btn" style="border-color:var(--gold);color:var(--gold)" onclick="editAdjTime(${a._idx})">改时间</button> <button class="del-btn" onclick="delAdjustment(${a._idx})">删除</button></td>` : ''}</tr>`;
   }).join('');
 
-  document.getElementById('adj-timeline').innerHTML = appData.portfolio.adjustments.map(a => {
+  document.getElementById('adj-timeline').innerHTML = sorted.map(a => {
     const modifiedTag = a.timeModified ? ' <span class="tag" style="background:#fff7e6;color:#d48806;font-size:10px">已修改</span>' : '';
     return `
     <div class="timeline-item ${a.action === 'sell' ? 'sell' : ''}">
