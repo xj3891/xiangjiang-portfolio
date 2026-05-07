@@ -122,6 +122,37 @@ tr:hover td { background: #fafafa; }
 .timeline-item .time { font-size: 12px; color: var(--text2); }
 .timeline-item .title { font-size: 14px; font-weight: 600; margin: 4px 0; }
 .timeline-item .desc { font-size: 13px; color: #595959; }
+
+/* 按月分组 */
+.month-group { margin-bottom: 20px; }
+.month-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 16px; background: linear-gradient(135deg, #1a1a2e, #16213e);
+  color: white; border-radius: var(--radius) var(--radius) 0 0;
+  font-size: 15px; font-weight: 600; letter-spacing: 1px;
+}
+.month-header .month-stats { font-size: 12px; opacity: 0.7; font-weight: 400; }
+.month-list { background: var(--card); border-radius: 0 0 var(--radius) var(--radius); overflow: hidden; }
+.adj-row {
+  display: flex; align-items: center; padding: 12px 16px;
+  border-bottom: 1px solid var(--border); gap: 10px; font-size: 14px;
+}
+.adj-row:last-child { border-bottom: none; }
+.adj-row .adj-time { min-width: 48px; color: var(--text2); font-size: 12px; }
+.adj-row .adj-tag { min-width: 36px; text-align: center; }
+.adj-row .adj-name { font-weight: 600; min-width: 60px; }
+.adj-row .adj-code { color: var(--text2); font-size: 12px; min-width: 52px; }
+.adj-row .adj-qty { color: var(--text2); font-size: 13px; min-width: 48px; }
+.adj-row .adj-price { min-width: 60px; }
+.adj-row .adj-reason { flex: 1; color: #595959; font-size: 13px; }
+.adj-row .adj-ops { white-space: nowrap; }
+@media screen and (max-width: 768px) {
+  .adj-row { flex-wrap: wrap; padding: 10px 12px; gap: 4px 8px; font-size: 13px; }
+  .adj-row .adj-time { min-width: auto; }
+  .adj-row .adj-code { display: none; }
+  .adj-row .adj-qty { display: none; }
+  .adj-row .adj-reason { width: 100%; margin-top: 2px; }
+}
 .refresh-bar { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; margin-bottom: 8px; font-size: 13px; color: var(--text2); }
 .refresh-btn { background: var(--primary); color: white; border: none; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
 .refresh-btn:hover { opacity: 0.9; }
@@ -507,16 +538,7 @@ tr:hover td { background: #fafafa; }
     <div id="adj-admin-bar" style="display:none;margin-bottom:16px">
       <button class="admin-btn" onclick="showAdjModal()">＋ 新增调仓</button>
     </div>
-    <div class="card">
-      <div class="card-title"><span class="dot"></span>调仓记录</div>
-      <div style="overflow-x:auto"><table id="adj-table"><thead><tr>
-        <th>日期</th><th>操作</th><th>代码</th><th>名称</th><th>数量</th><th>价格</th><th>理由</th><th id="adj-del-th" style="display:none">操作</th>
-      </tr></thead><tbody></tbody></table></div>
-    </div>
-    <div class="card">
-      <div class="card-title"><span class="dot"></span>调仓时间线</div>
-      <div id="adj-timeline"></div>
-    </div>
+    <div id="adj-monthly"></div>
   </div>
 
   <!-- 业绩页 -->
@@ -2696,23 +2718,51 @@ function renderHoldings() {
 
 function renderAdjustments() {
   const isAdmin = currentUser?.role === 'admin';
-  // 按时间倒序排列（最新在前）
+  // 按时间倒序排列
   const sorted = appData.portfolio.adjustments
     .map((a, i) => ({ ...a, _idx: i }))
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  document.querySelector('#adj-table tbody').innerHTML = sorted.map(a => {
-    const modifiedTag = a.timeModified ? ' <span class="tag" style="background:#fff7e6;color:#d48806;font-size:10px">已修改</span>' : '';
-    return `<tr><td>${displayDate(a.date)}${modifiedTag}</td><td><span class="tag ${a.action === 'buy' ? 'tag-buy' : 'tag-sell'}">${a.action === 'buy' ? '买入' : '卖出'}</span></td><td>${a.code}</td><td>${a.name}</td><td>${a.qty}股</td><td>¥${a.price.toFixed(2)}</td><td>${a.reason}</td>${isAdmin ? `<td style="white-space:nowrap"><button class="del-btn" style="border-color:var(--gold);color:var(--gold)" onclick="editAdjTime(${a._idx})">改时间</button> <button class="del-btn" onclick="delAdjustment(${a._idx})">删除</button></td>` : ''}</tr>`;
-  }).join('');
+  // 按月分组
+  const months = {};
+  sorted.forEach(a => {
+    const d = new Date(a.date);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    if (!months[key]) months[key] = [];
+    months[key].push(a);
+  });
 
-  document.getElementById('adj-timeline').innerHTML = sorted.map(a => {
-    const modifiedTag = a.timeModified ? ' <span class="tag" style="background:#fff7e6;color:#d48806;font-size:10px">已修改</span>' : '';
-    return `
-    <div class="timeline-item ${a.action === 'sell' ? 'sell' : ''}">
-      <div class="time">${displayDate(a.date)}${modifiedTag}</div>
-      <div class="title"><span class="tag ${a.action === 'buy' ? 'tag-buy' : 'tag-sell'}">${a.action === 'buy' ? '买入' : '卖出'}</span> ${a.name} <span style="color:#8c8c8c">(${a.code})</span></div>
-      <div class="desc">${a.qty}股 × ¥${a.price.toFixed(2)}　|　${a.reason}</div>
+  // 月份标签
+  const monthNames = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+
+  const container = document.getElementById('adj-monthly');
+  container.innerHTML = Object.keys(months).sort((a, b) => b.localeCompare(a)).map(key => {
+    const items = months[key];
+    const [yr, mo] = key.split('-');
+    const buys = items.filter(a => a.action === 'buy').length;
+    const sells = items.filter(a => a.action === 'sell').length;
+    const label = `${yr}年${monthNames[parseInt(mo)-1]}`;
+    const stats = `${buys}买 ${sells}卖 · 共${items.length}笔`;
+
+    const rows = items.map(a => {
+      const modifiedTag = a.timeModified ? ' <span class="tag" style="background:#fff7e6;color:#d48806;font-size:10px">改</span>' : '';
+      const d = new Date(a.date);
+      const timeStr = `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+      return `<div class="adj-row">
+        <div class="adj-time">${timeStr}${modifiedTag}</div>
+        <div class="adj-tag"><span class="tag ${a.action === 'buy' ? 'tag-buy' : 'tag-sell'}">${a.action === 'buy' ? '买' : '卖'}</span></div>
+        <div class="adj-name">${a.name}</div>
+        <div class="adj-code">${a.code}</div>
+        <div class="adj-qty">${a.qty}股</div>
+        <div class="adj-price">¥${a.price.toFixed(2)}</div>
+        <div class="adj-reason">${a.reason}</div>
+        ${isAdmin ? `<div class="adj-ops"><button class="del-btn" style="border-color:var(--gold);color:var(--gold)" onclick="editAdjTime(${a._idx})">改时间</button> <button class="del-btn" onclick="delAdjustment(${a._idx})">删除</button></div>` : ''}
+      </div>`;
+    }).join('');
+
+    return `<div class="month-group">
+      <div class="month-header"><span>${label}</span><span class="month-stats">${stats}</span></div>
+      <div class="month-list">${rows}</div>
     </div>`;
   }).join('');
 }
