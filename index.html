@@ -2198,69 +2198,128 @@ function loadScript(url, timeout = 6000) {
   });
 }
 
-// ---------- 数据源1: 腾讯财经（主） ----------
+// ---------- 数据源1: 腾讯财经（主） - fetch方式避免缓存 ----------
 // 返回格式: v_sh600519="1~贵州茅台~600519~当前价~昨收~开盘~成交量(手)~..."
-// 关键字段索引: 1=名称 3=当前价 4=昨收 5=开盘 30=涨跌额 31=涨跌幅% 32=最高 33=最低 6=成交量(手) 37=成交额(万) 30=日期时间
-function parseQQData() {
+// 关键字段索引: 1=名称 3=当前价 4=昨收 5=开盘 30=涨跌额 31=涨跌幅% 32=最高 33=最低 6=成交量(手) 37=成交额(万)
+function parseQQText(text) {
   const holdings = appData.portfolio.holdings;
   let parsed = 0;
   holdings.forEach(h => {
-    const varName = 'v_' + qqCode(h.code);
-    const raw = window[varName];
-    if (!raw) return;
+    const prefix = qqCode(h.code); // e.g. sh600869
+    const varName = 'v_' + prefix;
+    // 从文本中提取变量值: v_sh600869="..."
+    const regex = new RegExp(varName + '="([^"]*)"');
+    const match = text.match(regex);
+    if (!match) return;
+    const raw = match[1];
     const f = raw.split('~');
     if (f.length < 40) return;
-    const cur = parseFloat(f[3]);
-    const pre = parseFloat(f[4]);
+    const cur = parseFloat(f[3]);  // 当前价
+    const pre = parseFloat(f[4]);  // 昨收
     if (!cur || cur <= 0 || !pre || pre <= 0) return;
-    const chg = parseFloat(f[30]) || (cur - pre);
-    const chgPct = parseFloat(f[31]) || (pre > 0 ? chg / pre * 100 : 0);
-    const dtStr = f[30] && f[30].length >= 14 ? f[30] : ''; // 日期时间字段并非索引30,而是另一个
-    // 腾讯接口索引30是涨跌额, 31是涨跌幅, 日期时间在索引30的后面大字符串中
-    // 实际日期时间格式：索引30后的大字段 "20260428160702" 
+    // 腾讯字段索引: f[30]=日期时间 f[31]=涨跌额 f[32]=涨跌幅% f[33]=最高 f[34]=最低
+    const chg = parseFloat(f[31]) || (cur - pre);
+    const chgPct = parseFloat(f[32]) || (pre > 0 ? chg / pre * 100 : 0);
+    // 日期时间: f[30] 格式 "20260507132645"
+    let timeStr = '';
+    const dtField = (f[30] || '').trim();
+    if (/^\d{14}$/.test(dtField)) {
+      timeStr = `${dtField.slice(0,4)}-${dtField.slice(4,6)}-${dtField.slice(6,8)} ${dtField.slice(8,10)}:${dtField.slice(10,12)}:${dtField.slice(12,14)}`;
+    }
+    if (!timeStr) {
+      const now = new Date();
+      timeStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    }
     marketData[h.code] = {
       name: f[1], price: cur, preClose: pre, change: chg, changePct: chgPct,
-      open: parseFloat(f[5]) || 0, high: parseFloat(f[32]) || cur, low: parseFloat(f[33]) || cur,
+      open: parseFloat(f[5]) || 0, high: parseFloat(f[33]) || cur, low: parseFloat(f[34]) || cur,
       vol: parseInt(f[6]) || 0, amount: parseFloat(f[37]) || 0,
-      time: formatQTTime(f[30]) // 涨跌额字段里藏着日期时间
+      time: timeStr
     };
     parsed++;
   });
   return parsed;
 }
 
-// 从腾讯日期时间字符串提取可读时间
-function formatQTTime(field) {
-  if (!field) return '';
-  // 腾讯接口的日期时间在索引30的内容中有时包含日期
-  // 但实际上索引30是涨跌额，日期在另一个位置
-  // 我们直接取当前时间
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+// 清除腾讯全局变量缓存
+function clearQQGlobalVars() {
+  const holdings = appData.portfolio.holdings;
+  holdings.forEach(h => {
+    const varName = 'v_' + qqCode(h.code);
+    try { delete window[varName]; } catch(e) {}
+  });
 }
 
 async function fetchFromQQ() {
   const holdings = appData.portfolio.holdings;
   if (!holdings.length) return 0;
   const codes = holdings.map(h => qqCode(h.code)).join(',');
+  // 方式1: fetch直接获取文本（无缓存，即时数据）
   try {
-    await loadScript(`https://qt.gtimg.cn/q=${codes}`);
-    return parseQQData() || 0;
+    const resp = await fetch(`https://qt.gtimg.cn/q=${codes}&_t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: { 'Accept': '*/*' }
+    });
+    if (resp.ok) {
+      const text = await resp.text();
+      const count = parseQQText(text);
+      if (count > 0) return count;
+    }
   } catch (e) {
-    console.warn('腾讯接口失败:', e.message);
+    console.warn('腾讯fetch失败:', e.message);
+  }
+  // 方式2: 降级到script标签方式（清除旧全局变量）
+  try {
+    clearQQGlobalVars();
+    await loadScript(`https://qt.gtimg.cn/q=${codes}&_t=${Date.now()}`);
+    // 用旧方式解析全局变量
+    let parsed = 0;
+    holdings.forEach(h => {
+      const varName = 'v_' + qqCode(h.code);
+      const raw = window[varName];
+      if (!raw) return;
+      const f = raw.split('~');
+      if (f.length < 40) return;
+      const cur = parseFloat(f[3]);
+      const pre = parseFloat(f[4]);
+      if (!cur || cur <= 0 || !pre || pre <= 0) return;
+      // 腾讯字段索引: f[30]=日期时间 f[31]=涨跌额 f[32]=涨跌幅% f[33]=最高 f[34]=最低
+      const chg = parseFloat(f[31]) || (cur - pre);
+      const chgPct = parseFloat(f[32]) || (pre > 0 ? chg / pre * 100 : 0);
+      let timeStr = '';
+      const dtField = (f[30] || '').trim();
+      if (/^\d{14}$/.test(dtField)) {
+        timeStr = `${dtField.slice(0,4)}-${dtField.slice(4,6)}-${dtField.slice(6,8)} ${dtField.slice(8,10)}:${dtField.slice(10,12)}:${dtField.slice(12,14)}`;
+      }
+      if (!timeStr) {
+        const now = new Date();
+        timeStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+      }
+      marketData[h.code] = {
+        name: f[1], price: cur, preClose: pre, change: chg, changePct: chgPct,
+        open: parseFloat(f[5]) || 0, high: parseFloat(f[33]) || cur, low: parseFloat(f[34]) || cur,
+        vol: parseInt(f[6]) || 0, amount: parseFloat(f[37]) || 0,
+        time: timeStr
+      };
+      parsed++;
+    });
+    return parsed;
+  } catch (e) {
+    console.warn('腾讯script方式失败:', e.message);
     return 0;
   }
 }
 
-// ---------- 数据源2: 新浪财经（备） ----------
-// 返回格式: var hq_str_sh600519="名称,开盘,昨收,当前价,..."
-function parseSinaData() {
+// ---------- 数据源2: 新浪财经（备） - fetch方式 ----------
+function parseSinaText(text) {
   const holdings = appData.portfolio.holdings;
   let parsed = 0;
   holdings.forEach(h => {
     const varName = 'hq_str_' + sinaCode(h.code);
-    const raw = window[varName];
-    if (!raw) return;
+    const regex = new RegExp(varName + '="([^"]*)"');
+    const match = text.match(regex);
+    if (!match) return;
+    const raw = match[1];
     const f = raw.split(',');
     if (f.length < 32) return;
     const cur = parseFloat(f[3]), pre = parseFloat(f[2]);
@@ -2283,8 +2342,41 @@ async function fetchFromSina() {
   if (!holdings.length) return 0;
   const codes = holdings.map(h => sinaCode(h.code)).join(',');
   try {
-    await loadScript(`https://hq.sinajs.cn/list=${codes}`);
-    return parseSinaData() || 0;
+    const resp = await fetch(`https://hq.sinajs.cn/list=${codes}&_s=${Date.now()}`, {
+      cache: 'no-store',
+      headers: { 'Referer': 'https://finance.sina.com.cn' }
+    });
+    if (resp.ok) {
+      const text = await resp.text();
+      const count = parseSinaText(text);
+      if (count > 0) return count;
+    }
+  } catch (e) {
+    console.warn('新浪fetch失败:', e.message);
+  }
+  // 降级到script方式
+  try {
+    await loadScript(`https://hq.sinajs.cn/list=${codes}&_s=${Date.now()}`);
+    let parsed = 0;
+    holdings.forEach(h => {
+      const varName = 'hq_str_' + sinaCode(h.code);
+      const raw = window[varName];
+      if (!raw) return;
+      const f = raw.split(',');
+      if (f.length < 32) return;
+      const cur = parseFloat(f[3]), pre = parseFloat(f[2]);
+      if (!cur || cur <= 0) return;
+      const chg = cur - pre;
+      marketData[h.code] = {
+        name: f[0], price: cur, preClose: pre, change: chg,
+        changePct: pre > 0 ? (chg / pre * 100) : 0,
+        open: parseFloat(f[1]), high: parseFloat(f[4]), low: parseFloat(f[5]),
+        vol: parseInt(f[8]), amount: parseFloat(f[9]),
+        time: f[31] || f[30] || ''
+      };
+      parsed++;
+    });
+    return parsed;
   } catch (e) {
     console.warn('新浪接口失败:', e.message);
     return 0;
@@ -2312,13 +2404,16 @@ async function fetchMarket() {
   const holdings = appData.portfolio.holdings;
   if (!holdings.length) { renderAll(); return; }
 
-  // 优先腾讯
+  // 清除旧全局变量
+  clearQQGlobalVars();
+
+  // 优先腾讯（fetch方式，无缓存）
   let count = await fetchFromQQ();
-  if (count > 0) { lastFetchSource = '腾讯财经'; renderAll(); return; }
+  if (count > 0) { lastFetchSource = '腾讯财经·即时'; renderAll(); return; }
 
   // 备用新浪
   count = await fetchFromSina();
-  if (count > 0) { lastFetchSource = '新浪财经'; renderAll(); return; }
+  if (count > 0) { lastFetchSource = '新浪财经·即时'; renderAll(); return; }
 
   // 兜底模拟
   fillSimulated();
@@ -2330,6 +2425,7 @@ async function refreshMarket() {
   const btn = document.getElementById('btn-refresh');
   btn.disabled = true; btn.textContent = '刷新中...';
   marketData = {}; // 清空旧数据强制重新获取
+  clearQQGlobalVars(); // 清除旧全局变量
   await fetchMarket();
   btn.disabled = false; btn.textContent = '刷新行情';
 }
@@ -2365,6 +2461,100 @@ function getHoldingCalc(h) {
   return { price, changePct, mv, cost, pnl, pnlPct };
 }
 
+// ====== 计算已平仓交易收益（短线战绩）======
+function getClosedPositionPerformance() {
+  const adjustments = appData.portfolio.adjustments;
+  const now = new Date();
+  const monthAgo = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
+  
+  // 按股票代码分组，按日期排序
+  const positions = {};
+  adjustments.forEach(a => {
+    if (!positions[a.code]) positions[a.code] = [];
+    positions[a.code].push(a);
+  });
+  
+  const closedTrades = [];
+  
+  Object.keys(positions).forEach(code => {
+    const trades = positions[code].sort((a, b) => new Date(a.date) - new Date(b.date));
+    let buyQueue = [];
+    
+    trades.forEach(t => {
+      if (t.action === 'buy') {
+        buyQueue.push({ date: t.date, price: t.price, qty: t.qty, name: t.name });
+      } else if (t.action === 'sell') {
+        let sellQty = t.qty;
+        while (sellQty > 0 && buyQueue.length > 0) {
+          const buy = buyQueue[0];
+          const matchedQty = Math.min(buy.qty, sellQty);
+          const sellDate = new Date(t.date);
+          
+          // 只统计最近一个月内的卖出
+          if (sellDate >= monthAgo) {
+            const pnlPct = (t.price - buy.price) / buy.price * 100;
+            closedTrades.push({
+              code: code,
+              name: t.name,
+              buyDate: buy.date,
+              sellDate: t.date,
+              buyPrice: buy.price,
+              sellPrice: t.price,
+              qty: matchedQty,
+              pnlPct: pnlPct
+            });
+          }
+          
+          buy.qty -= matchedQty;
+          sellQty -= matchedQty;
+          if (buy.qty <= 0) buyQueue.shift();
+        }
+      }
+    });
+  });
+  
+  // 筛选收益>5%的交易，按收益率降序排序
+  return closedTrades
+    .filter(t => t.pnlPct > 5)
+    .sort((a, b) => b.pnlPct - a.pnlPct);
+}
+
+// ====== 短线战绩自动滚动 ======
+function startMarquee(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  let scrollPos = 0;
+  let direction = 1; // 1=向右, -1=向左
+  const scrollSpeed = 0.5; // 像素/帧
+  let isHovering = false;
+  
+  container.addEventListener('mouseenter', () => isHovering = true);
+  container.addEventListener('mouseleave', () => isHovering = false);
+  container.addEventListener('touchstart', () => isHovering = true);
+  container.addEventListener('touchend', () => isHovering = false);
+  
+  function animate() {
+    if (!isHovering && container.scrollWidth > container.clientWidth) {
+      scrollPos += scrollSpeed * direction;
+      
+      // 到达右边界，改变方向
+      if (scrollPos >= container.scrollWidth - container.clientWidth) {
+        direction = -1;
+      }
+      // 到达左边界，改变方向
+      if (scrollPos <= 0) {
+        direction = 1;
+      }
+      
+      container.scrollLeft = scrollPos;
+    }
+    requestAnimationFrame(animate);
+  }
+  
+  animate();
+}
+
 // ====== 渲染 ======
 function renderAll() {
   renderOverview(); renderHoldings(); renderAdjustments(); renderPerformance();
@@ -2397,43 +2587,39 @@ function renderOverview() {
 
   const latestNav = appData.portfolio.nav[appData.portfolio.nav.length - 1] || { nav: 1 };
 
-  // ====== 短线战绩报告 ======
-  const winners = appData.portfolio.holdings
-    .map(h => {
-      const c = getHoldingCalc(h);
-      return { ...h, pnlPct: c.pnlPct, price: c.price, cost: h.cost };
-    })
-    .filter(h => h.pnlPct >= 5)
-    .sort((a, b) => b.pnlPct - a.pnlPct);
+  // ====== 短线战绩报告（最近一个月已平仓交易收益>5%）======
+  const closedTrades = getClosedPositionPerformance();
 
   const reportEl = document.getElementById('battle-report');
   if (reportEl) {
     const today = new Date();
     const monthAgo = new Date(today.getTime() - 30 * 24 * 3600 * 1000);
     const dateRange = `${monthAgo.getMonth()+1}/${monthAgo.getDate()} - ${today.getMonth()+1}/${today.getDate()}`;
-    if (winners.length > 0) {
+    if (closedTrades.length > 0) {
       reportEl.innerHTML = `
         <div class="br-header">
-          <h2>🔥 短线战绩<span class="br-badge">${winners.length}只盈利>5%</span></h2>
+          <h2>🔥 短线战绩<span class="br-badge">${closedTrades.length}笔盈利>5%</span></h2>
           <span class="br-date">${dateRange}</span>
         </div>
-        <div class="br-list">
-          ${winners.map(h => `
+        <div class="br-list" id="br-scroll">
+          ${closedTrades.map(t => `
             <div class="br-item">
-              <div class="br-name">${h.name}</div>
-              <div class="br-code">${h.code}</div>
-              <div class="br-pct up">+${h.pnlPct.toFixed(1)}%</div>
-              <div class="br-cost">成本 ¥${h.cost.toFixed(2)} → 现价 ¥${h.price.toFixed(2)}</div>
+              <div class="br-name">${t.name}</div>
+              <div class="br-code">${t.code}</div>
+              <div class="br-pct up">+${t.pnlPct.toFixed(1)}%</div>
+              <div class="br-cost">¥${t.buyPrice.toFixed(2)}→¥${t.sellPrice.toFixed(2)}</div>
             </div>
           `).join('')}
         </div>`;
+      // 自动滚动效果
+      startMarquee('br-scroll');
     } else {
       reportEl.innerHTML = `
         <div class="br-header">
           <h2>📊 短线战绩</h2>
           <span class="br-date">${dateRange}</span>
         </div>
-        <div class="br-empty">暂无盈利超过5%的持仓，持续跟踪中...</div>`;
+        <div class="br-empty">暂无最近一个月盈利超5%的平仓交易</div>`;
     }
   }
 
@@ -2693,7 +2879,40 @@ async function fetchSinglePrice(code, prefix) {
   const priceEl = document.getElementById(prefix + '-price') || document.getElementById(prefix + '-cost');
   const priceTag = document.getElementById(prefix + '-price-tag');
   try {
-    await loadScript(`https://qt.gtimg.cn/q=${qqCode(code)}`);
+    // 优先用fetch方式获取即时数据
+    const resp = await fetch(`https://qt.gtimg.cn/q=${qqCode(code)}&_t=${Date.now()}`, { cache: 'no-store' });
+    if (resp.ok) {
+      const text = await resp.text();
+      const varName = 'v_' + qqCode(code);
+      const regex = new RegExp(varName + '="([^"]*)"');
+      const match = text.match(regex);
+      if (match) {
+        const f = match[1].split('~');
+        if (f.length > 3) {
+          const price = parseFloat(f[3]);
+          if (price > 0) {
+            priceEl.value = price.toFixed(2);
+            const pre = parseFloat(f[4]) || price;
+            const chg = parseFloat(f[31]) || (price - pre);
+            const chgPct = parseFloat(f[32]) || (pre > 0 ? (price - pre) / pre * 100 : 0);
+            marketData[code] = {
+              name: f[1] || '', price, preClose: pre, change: chg, changePct: chgPct,
+              open: parseFloat(f[5]) || 0, high: parseFloat(f[33]) || price, low: parseFloat(f[34]) || price,
+              vol: parseInt(f[6]) || 0, amount: parseFloat(f[37]) || 0,
+              time: new Date().toLocaleString('zh-CN', {hour12:false})
+            };
+            if (priceTag) { priceTag.style.display = ''; priceTag.textContent = '实时价'; }
+            return;
+          }
+        }
+      }
+    }
+  } catch(e) {
+    console.warn('fetch即时价失败，降级script:', e.message);
+  }
+  // 降级到script方式
+  try {
+    await loadScript(`https://qt.gtimg.cn/q=${qqCode(code)}&_t=${Date.now()}`);
     const varName = 'v_' + qqCode(code);
     const raw = window[varName];
     if (raw) {
@@ -2702,21 +2921,21 @@ async function fetchSinglePrice(code, prefix) {
         const price = parseFloat(f[3]);
         if (price > 0) {
           priceEl.value = price.toFixed(2);
-          // 更新marketData缓存
           const pre = parseFloat(f[4]) || price;
+          const chg = parseFloat(f[31]) || (price - pre);
+          const chgPct = parseFloat(f[32]) || (pre > 0 ? (price - pre) / pre * 100 : 0);
           marketData[code] = {
-            name: f[1] || '', price, preClose: pre,
-            change: price - pre, changePct: pre > 0 ? (price - pre) / pre * 100 : 0,
-            open: parseFloat(f[5]) || 0, high: parseFloat(f[32]) || price, low: parseFloat(f[33]) || price,
+            name: f[1] || '', price, preClose: pre, change: chg, changePct: chgPct,
+            open: parseFloat(f[5]) || 0, high: parseFloat(f[33]) || price, low: parseFloat(f[34]) || price,
             vol: parseInt(f[6]) || 0, amount: parseFloat(f[37]) || 0,
-            time: formatQTTime(f[30])
+            time: new Date().toLocaleString('zh-CN', {hour12:false})
           };
           if (priceTag) { priceTag.style.display = ''; priceTag.textContent = '实时价'; }
           return;
         }
       }
     }
-  } catch(e) {}
+  } catch(e2) {}
   if (priceTag) { priceTag.style.display = ''; priceTag.textContent = '请手动输入'; }
 }
 
@@ -3123,10 +3342,12 @@ function startAutoRefresh() {
     const h = now.getHours(), m = now.getMinutes(), wd = now.getDay();
     if (wd >= 1 && wd <= 5) {
       if ((h === 9 && m >= 30) || h === 10 || (h === 11 && m <= 30) || h === 13 || h === 14 || (h === 15 && m === 0)) {
+        marketData = {};
+        clearQQGlobalVars();
         fetchMarket();
       }
     }
-  }, 30000);
+  }, 15000);
 }
 
 // ====== 启动 ======
