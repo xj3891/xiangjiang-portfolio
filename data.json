@@ -20,7 +20,7 @@
       {
         "code": "600869",
         "name": "远东股份",
-        "weight": 40,
+        "weight": 30,
         "cost": 16.11,
         "qty": 6200,
         "date": "2026-04-09",
@@ -29,7 +29,7 @@
       {
         "code": "002155",
         "name": "湖南黄金",
-        "weight": 28,
+        "weight": 21,
         "cost": 31.34,
         "qty": 3100,
         "date": "2026-04-22",
@@ -42,11 +42,30 @@
         "qty": 5000,
         "date": "2026-05-06",
         "industry": "其他",
-        "weight": 32,
+        "weight": 24,
+        "status": "holding"
+      },
+      {
+        "code": "600570",
+        "name": "恒生电子",
+        "cost": 27.66,
+        "qty": 4000,
+        "date": "2026-05-11",
+        "industry": "其他",
+        "weight": 25,
         "status": "holding"
       }
     ],
     "adjustments": [
+      {
+        "date": "2026-05-11 10:01",
+        "action": "buy",
+        "code": "600570",
+        "name": "恒生电子",
+        "qty": 4000,
+        "price": 27.66,
+        "reason": "行业软件龙头，底部企稳"
+      },
       {
         "date": "2026-05-07 14:51",
         "action": "sell",
