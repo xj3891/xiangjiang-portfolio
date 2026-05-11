@@ -261,6 +261,25 @@ tr:hover td { background: #fafafa; }
   border-radius: 10px; margin-left: 8px; vertical-align: middle;
 }
 
+/* 投顾必读 & 市场观点 */
+.guide-card {
+  background: linear-gradient(135deg, #1a1a2e 0%, #2d1b3d 40%, #0f3460 100%);
+  border-radius: var(--radius); padding: 18px 16px; margin-bottom: 16px;
+  color: white; position: relative; overflow: hidden;
+}
+.guide-card .guide-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; letter-spacing: 1px; display: flex; align-items: center; gap: 8px; }
+.guide-card .guide-body { font-size: 13px; line-height: 1.8; opacity: 0.9; white-space: pre-line; }
+.outlook-card {
+  background: var(--card); border-radius: var(--radius); padding: 18px 16px; margin-bottom: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06); border-left: 4px solid var(--blue);
+}
+.outlook-card .outlook-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.outlook-card .outlook-body { font-size: 13px; line-height: 1.8; color: #595959; white-space: pre-line; }
+@media screen and (max-width: 768px) {
+  .guide-card, .outlook-card { padding: 14px 12px; }
+  .guide-card .guide-title, .outlook-card .outlook-title { font-size: 14px; }
+}
+
 @media screen and (max-width: 768px) {
   .battle-report { padding: 14px 12px; }
   .br-header h2 { font-size: 14px; }
@@ -500,6 +519,10 @@ tr:hover td { background: #fafafa; }
   <div id="page-overview" class="page active">
     <!-- 短线战绩报告 -->
     <div class="battle-report" id="battle-report"></div>
+    <!-- 投顾组合必读 -->
+    <div class="guide-card" id="guide-card"></div>
+    <!-- 市场观点 -->
+    <div class="outlook-card" id="outlook-card"></div>
     <div class="stats" id="overview-stats"></div>
     <div class="card">
       <div class="card-title"><span class="dot"></span>持仓分布</div>
@@ -618,6 +641,14 @@ tr:hover td { background: #fafafa; }
         <input id="nv-bench" type="number" step="0.01" placeholder="基准收益率%">
       </div>
       <button class="admin-btn" onclick="addNavData()">添加净值</button>
+    </div>
+
+    <!-- 投顾组合必读 & 市场观点 编辑 -->
+    <div class="card">
+      <div class="card-title"><span class="admin-dot"></span>📝 投顾组合必读 &amp; 市场观点</div>
+      <div class="form-group"><label>投顾组合必读</label><textarea id="admin-guide" rows="6" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;resize:vertical" placeholder="输入投顾组合必读内容..."></textarea></div>
+      <div class="form-group"><label>市场观点</label><textarea id="admin-outlook" rows="6" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;resize:vertical" placeholder="输入市场观点内容..."></textarea></div>
+      <button class="admin-btn primary" onclick="saveGuideAndOutlook()">💾 保存</button>
     </div>
 
     <!-- 云端同步设置 -->
@@ -2591,6 +2622,24 @@ function renderAll() {
 }
 
 function renderOverview() {
+  // ====== 投顾组合必读 ======
+  const guideEl = document.getElementById('guide-card');
+  if (guideEl) {
+    const guide = appData.portfolio.guide || '';
+    guideEl.innerHTML = guide
+      ? `<div class="guide-title">📋 投顾组合必读</div><div class="guide-body">${guide}</div>`
+      : `<div class="guide-title">📋 投顾组合必读</div><div class="guide-body" style="opacity:0.5">暂无内容</div>`;
+  }
+
+  // ====== 市场观点 ======
+  const outlookEl = document.getElementById('outlook-card');
+  if (outlookEl) {
+    const outlook = appData.portfolio.outlook || '';
+    outlookEl.innerHTML = outlook
+      ? `<div class="outlook-title">💬 市场观点</div><div class="outlook-body">${outlook}</div>`
+      : `<div class="outlook-title">💬 市场观点</div><div class="outlook-body" style="color:#8c8c8c">暂无内容</div>`;
+  }
+
   let totalMv = 0, totalCost = 0;
   appData.portfolio.holdings.forEach(h => { const c = getHoldingCalc(h); totalMv += c.mv; totalCost += c.cost; });
 
@@ -2833,6 +2882,12 @@ function renderAdmin() {
   updateSyncStatus();
   const tokenInput = document.getElementById('cloud-token-input');
   if (tokenInput && cloudToken) tokenInput.value = cloudToken;
+
+  // 投顾必读 & 市场观点
+  const guideTA = document.getElementById('admin-guide');
+  const outlookTA = document.getElementById('admin-outlook');
+  if (guideTA) guideTA.value = appData.portfolio.guide || '';
+  if (outlookTA) outlookTA.value = appData.portfolio.outlook || '';
 
   // 客户列表
   const clients = appData.users.filter(u => u.role !== 'admin');
@@ -3294,6 +3349,15 @@ function delHolding(index) {
 // =====================================================
 //  管理操作：净值
 // =====================================================
+function saveGuideAndOutlook() {
+  const guide = document.getElementById('admin-guide').value.trim();
+  const outlook = document.getElementById('admin-outlook').value.trim();
+  appData.portfolio.guide = guide;
+  appData.portfolio.outlook = outlook;
+  saveData(appData); renderAll();
+  toast('✅ 投顾必读 & 市场观点已保存');
+}
+
 function addNavData() {
   const date = document.getElementById('nv-date').value;
   const nav = parseFloat(document.getElementById('nv-nav').value);
