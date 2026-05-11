@@ -924,6 +924,14 @@ async function syncPushToCloud() {
 let appData = loadLocalData();
 let currentUser = null;
 
+// 过滤持仓中数量为0的个股
+function cleanZeroQtyHoldings() {
+  if (appData && appData.portfolio && appData.portfolio.holdings) {
+    appData.portfolio.holdings = appData.portfolio.holdings.filter(h => h.qty > 0);
+  }
+}
+cleanZeroQtyHoldings();
+
 // =====================================================
 //  A股股票搜索引擎（代码/名称/拼音缩写）
 // =====================================================
@@ -2577,6 +2585,7 @@ function startMarquee(containerId) {
 
 // ====== 渲染 ======
 function renderAll() {
+  cleanZeroQtyHoldings();
   renderOverview(); renderHoldings(); renderAdjustments(); renderPerformance();
   if (currentUser?.role === 'admin') renderAdmin();
 }
